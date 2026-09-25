@@ -4,11 +4,13 @@ import {
   UserMessageAttachments,
 } from "@/components/assistant-ui/attachment";
 import { MarkdownText } from "@/components/assistant-ui/markdown-text";
+import { LiveVoiceOverlay } from "@/components/assistant-ui/live-voice-overlay";
 import { Reasoning, ReasoningGroup } from "@/components/assistant-ui/reasoning";
 import { ToolFallback } from "@/components/assistant-ui/tool-fallback";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useLiveVoiceStore } from "@/lib/live-voice-store";
 import {
   ActionBarMorePrimitive,
   ActionBarPrimitive,
@@ -18,6 +20,8 @@ import {
   ErrorPrimitive,
   MessagePrimitive,
   ThreadPrimitive,
+  useAui,
+  useAuiState,
 } from "@assistant-ui/react";
 import {
   ArrowDownIcon,
@@ -27,10 +31,12 @@ import {
   ChevronRightIcon,
   CopyIcon,
   DownloadIcon,
+  MicIcon,
   MoreHorizontalIcon,
   PencilIcon,
   RefreshCwIcon,
   SquareIcon,
+  Volume2Icon,
 } from "lucide-react";
 import type { FC } from "react";
 
@@ -63,6 +69,7 @@ export const Thread: FC = () => {
           <Composer />
         </ThreadPrimitive.ViewportFooter>
       </ThreadPrimitive.Viewport>
+      <LiveVoiceOverlay />
     </ThreadPrimitive.Root>
   );
 };
@@ -145,6 +152,26 @@ const Composer: FC = () => {
   return (
     <ComposerPrimitive.Root className="aui-composer-root relative flex w-full flex-col">
       <ComposerPrimitive.AttachmentDropzone className="aui-composer-attachment-dropzone flex w-full flex-col rounded-2xl border border-input bg-background px-1 pt-2 outline-none transition-shadow has-[textarea:focus-visible]:border-ring has-[textarea:focus-visible]:ring-2 has-[textarea:focus-visible]:ring-ring/20 data-[dragging=true]:border-ring data-[dragging=true]:border-dashed data-[dragging=true]:bg-accent/50">
+        <ComposerPrimitive.If dictation>
+          <div className="aui-composer-dictation-bar mx-1 mb-1 flex items-center gap-2 rounded-lg bg-accent/60 px-3 py-2 text-sm">
+            <span className="relative flex size-2 shrink-0">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-destructive opacity-75" />
+              <span className="relative inline-flex size-2 rounded-full bg-destructive" />
+            </span>
+            <ComposerPrimitive.DictationTranscript className="aui-composer-dictation-transcript min-w-0 flex-1 truncate text-muted-foreground italic" />
+            <ComposerPrimitive.StopDictation asChild>
+              <TooltipIconButton
+                tooltip="Stop listening"
+                side="top"
+                type="button"
+                className="aui-composer-dictation-stop size-6 shrink-0"
+                aria-label="Stop listening"
+              >
+                <SquareIcon className="size-3 fill-current" />
+              </TooltipIconButton>
+            </ComposerPrimitive.StopDictation>
+          </div>
+        </ComposerPrimitive.If>
         <ComposerAttachments />
         <ComposerPrimitive.Input
           placeholder="Send a message..."
@@ -164,36 +191,81 @@ const ComposerAction: FC = () => {
     <div className="aui-composer-action-wrapper relative mx-2 mb-2 flex items-center justify-between">
       <ComposerAddAttachment />
 
-      <AssistantIf condition={({ thread }) => !thread.isRunning}>
-        <ComposerPrimitive.Send asChild>
-          <TooltipIconButton
-            tooltip="Send message"
-            side="bottom"
-            type="submit"
-            variant="default"
-            size="icon"
-            className="aui-composer-send size-8 rounded-full"
-            aria-label="Send message"
-          >
-            <ArrowUpIcon className="aui-composer-send-icon size-4" />
-          </TooltipIconButton>
-        </ComposerPrimitive.Send>
-      </AssistantIf>
+      <div className="flex items-center gap-1.5">
+        <ComposerMicButton />
 
-      <AssistantIf condition={({ thread }) => thread.isRunning}>
-        <ComposerPrimitive.Cancel asChild>
-          <Button
-            type="button"
-            variant="default"
-            size="icon"
-            className="aui-composer-cancel size-8 rounded-full"
-            aria-label="Stop generating"
-          >
-            <SquareIcon className="aui-composer-cancel-icon size-3 fill-current" />
-          </Button>
-        </ComposerPrimitive.Cancel>
-      </AssistantIf>
+        <AssistantIf condition={({ thread }) => !thread.isRunning}>
+          <ComposerPrimitive.Send asChild>
+            <TooltipIconButton
+              tooltip="Send message"
+              side="top"
+              type="submit"
+              variant="default"
+              size="icon"
+              className="aui-composer-send size-8 rounded-full"
+              aria-label="Send message"
+            >
+              <ArrowUpIcon className="aui-composer-send-icon size-4" />
+            </TooltipIconButton>
+          </ComposerPrimitive.Send>
+        </AssistantIf>
+
+        <AssistantIf condition={({ thread }) => thread.isRunning}>
+          <ComposerPrimitive.Cancel asChild>
+            <Button
+              type="button"
+              variant="default"
+              size="icon"
+              className="aui-composer-cancel size-8 rounded-full"
+              aria-label="Stop generating"
+            >
+              <SquareIcon className="aui-composer-cancel-icon size-3 fill-current" />
+            </Button>
+          </ComposerPrimitive.Cancel>
+        </AssistantIf>
+      </div>
     </div>
+  );
+};
+
+const ComposerMicButton: FC = () => {
+  const aui = useAui();
+  const dictation = useAuiState(({ composer }) => composer.dictation);
+  const dictationCapable = useAuiState(
+    ({ thread }) => thread.capabilities.dictation,
+  );
+  const setLive = useLiveVoiceStore((s) => s.setLive);
+
+  const active = dictation !== undefined;
+
+  return (
+    <TooltipIconButton
+      tooltip={active ? "Stop voice input" : "Voice input"}
+      side="top"
+      type="button"
+      variant={active ? "default" : "outline"}
+      size="icon"
+      className="aui-composer-dictate size-8 rounded-full"
+      aria-label={active ? "Stop voice input" : "Voice input"}
+      onClick={() => {
+        if (active) {
+          aui.composer().stopDictation();
+          return;
+        }
+        if (dictationCapable) {
+          aui.composer().startDictation();
+          return;
+        }
+        setLive(true);
+      }}
+    >
+      <MicIcon
+        className={cn(
+          "aui-composer-dictate-icon size-4",
+          active && "animate-pulse",
+        )}
+      />
+    </TooltipIconButton>
   );
 };
 
@@ -251,6 +323,11 @@ const AssistantActionBar: FC = () => {
           </AssistantIf>
         </TooltipIconButton>
       </ActionBarPrimitive.Copy>
+      <ActionBarPrimitive.Speak asChild>
+        <TooltipIconButton tooltip="Read aloud">
+          <Volume2Icon className="aui-assistant-action-bar-speak size-4" />
+        </TooltipIconButton>
+      </ActionBarPrimitive.Speak>
       <ActionBarPrimitive.Reload asChild>
         <TooltipIconButton tooltip="Refresh">
           <RefreshCwIcon />

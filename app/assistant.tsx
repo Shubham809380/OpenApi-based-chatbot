@@ -1,11 +1,14 @@
 "use client";
 
-import { AssistantRuntimeProvider } from "@assistant-ui/react";
 import {
-  useChatRuntime,
-  AssistantChatTransport,
-} from "@assistant-ui/react-ai-sdk";
+  AssistantRuntimeProvider,
+  WebSpeechDictationAdapter,
+  WebSpeechSynthesisAdapter,
+} from "@assistant-ui/react";
+import { AssistantChatTransport } from "@assistant-ui/react-ai-sdk";
 import { Thread } from "@/components/assistant-ui/thread";
+import { LiveVoiceToggle } from "@/components/assistant-ui/live-voice-toggle";
+import { VoiceOutputToggle } from "@/components/assistant-ui/voice-output-toggle";
 import {
   SidebarInset,
   SidebarProvider,
@@ -13,6 +16,7 @@ import {
 } from "@/components/ui/sidebar";
 import { ThreadListSidebar } from "@/components/assistant-ui/threadlist-sidebar";
 import { Separator } from "@/components/ui/separator";
+import { usePersistentChatRuntime } from "@/lib/persistent-chat-runtime";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -20,11 +24,18 @@ import {
   BreadcrumbPage,
 } from "@/components/ui/breadcrumb";
 
+const dictationAdapter = new WebSpeechDictationAdapter();
+const speechAdapter = new WebSpeechSynthesisAdapter();
+
 export const Assistant = () => {
-  const runtime = useChatRuntime({
+  const runtime = usePersistentChatRuntime({
     transport: new AssistantChatTransport({
       api: "/api/chat",
     }),
+    adapters: {
+      dictation: dictationAdapter,
+      speech: speechAdapter,
+    },
   });
 
   return (
@@ -43,6 +54,10 @@ export const Assistant = () => {
                   </BreadcrumbItem>
                 </BreadcrumbList>
               </Breadcrumb>
+              <div className="ml-auto flex items-center gap-2">
+                <LiveVoiceToggle />
+                <VoiceOutputToggle />
+              </div>
             </header>
             <div className="flex-1 overflow-hidden">
               <Thread />
